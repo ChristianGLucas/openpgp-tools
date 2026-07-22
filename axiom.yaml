@@ -1,5 +1,5 @@
 name: christiangeorgelucas/openpgp-tools
-version: 0.1.0
+version: 0.1.1
 language: python
 description: Deterministic, offline structural parsing of OpenPGP objects (RFC 4880 / RFC 9580) — public/secret keys, detached signatures, and messages — wrapping PGPy (BSD-3-Clause; its full runtime dependency tree — cryptography, cffi, pyasn1, pycparser — is Apache-2.0/BSD/MIT-0, no copyleft) plus this package's own low-level packet-stream walker built on PGPy's packet classes. Every node inspects only the packet structure and public metadata the caller supplies as binary or ASCII-armored bytes — never a network fetch, never a keyserver lookup. This package explicitly does NOT decrypt messages, does NOT sign anything, and NEVER reads or returns secret key material — key parsing extracts public-facing metadata only (fingerprint, algorithm, validity, User IDs, subkeys), even from a Transferable Secret Key. The one "verify" operation offered (ValidateStructure's self-signature check) is a PURE public-key structural check — exactly like checking a self-signed X.509 certificate — never a trust decision and never touching secret material. Malformed or truncated input returns a structured error, never a crash; every node is bounded to 640 KiB of input.
 nodes:
