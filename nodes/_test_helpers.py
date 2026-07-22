@@ -1,8 +1,16 @@
 """Shared test fixtures and independent-oracle helpers.
 
-Fixtures under nodes/fixtures/ were generated ONCE with a fixed creation
-timestamp (2024-01-15T12:00:00Z) via PGPy itself and committed, so every test
-run is deterministic (no key generation, no system-clock dependency).
+Fixtures under nodes/fixtures/ were generated ONCE via PGPy itself and
+committed, so every test run is deterministic (no key generation at test
+time). The KEY packets (primary + subkey, in pubkey.asc/seckey.asc) were
+created with a fixed, pinned timestamp (2024-01-15T12:00:00Z) -- tests assert
+against it directly. The SIGNATURE packets (the self-certification and
+subkey-binding signatures embedded in those same fixtures, plus
+detached_signature.asc / signed_message.asc) were made with PGPy's default
+`.sign()`, which stamps the real wall-clock time the fixtures were generated
+-- no test asserts an exact value for a signature's `created` field, only its
+presence/format, so this does not affect determinism of what's actually
+checked.
 
 The oracle functions below (`crc24_independent`, `v4_fingerprint_independent`)
 are hand-implemented directly from the RFC 4880 spec text, independent of

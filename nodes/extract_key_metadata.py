@@ -85,6 +85,12 @@ def extract_key_metadata(ax: AxiomContext, input: PgpBlob) -> KeyMetadataResult:
         key, _ = PGPKey.from_blob(raw)
     except (ValueError, PGPError) as e:
         return KeyMetadataResult(ok=False, error=f"failed to parse key: {e}")
+    except (AttributeError, TypeError):
+        # pgpy raises these (rather than its own ValueError/PGPError) when the
+        # blob parses as *some* OpenPGP object but not a key -- e.g. a
+        # detached signature or a bare message. Give a clean, specific
+        # message instead of leaking the internal attribute-access error.
+        return KeyMetadataResult(ok=False, error="input does not contain a parseable OpenPGP key packet")
     except Exception as e:
         return KeyMetadataResult(ok=False, error=f"failed to parse key: {e}")
 
