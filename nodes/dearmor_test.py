@@ -1,5 +1,4 @@
 from gen.messages_pb2 import PgpBlob, DearmorResult
-from nodes._common import MAX_INPUT_BYTES
 from nodes.dearmor import dearmor
 from nodes._test_helpers import FakeContext, crc24_independent, load_fixture
 
@@ -55,11 +54,3 @@ def test_dearmor_empty_input_is_error():
     ax = FakeContext()
     result = dearmor(ax, PgpBlob())
     assert result.ok is False
-
-
-def test_dearmor_oversized_input_is_error():
-    ax = FakeContext()
-    huge = "-----BEGIN PGP MESSAGE-----\n" + ("A" * (MAX_INPUT_BYTES + 1024)) + "\n-----END PGP MESSAGE-----\n"
-    result = dearmor(ax, PgpBlob(armored=huge))
-    assert result.ok is False
-    assert str(MAX_INPUT_BYTES) in result.error or "bound" in result.error.lower()

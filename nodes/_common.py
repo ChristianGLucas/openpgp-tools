@@ -6,8 +6,8 @@ its `Packet` dispatcher for generic packet-stream walking (including its own
 transparent decompression of CompressedData packets), and its high-level
 `PGPKey`/`PGPSignature` wrappers for key and signature metadata. None of the
 actual OpenPGP packet framing, MPI/key-material parsing, or signature-field
-semantics is reimplemented here — this module supplies only input bounds,
-the packet-tag -> name / algorithm-enum -> name formatting glue, and the
+semantics is reimplemented here — this module supplies only the
+packet-tag -> name / algorithm-enum -> name formatting glue, and the
 generic recursive packet walk.
 
 SCOPE: structural/metadata parsing only. This module (and every node built on
@@ -25,39 +25,11 @@ from pgpy.errors import PGPError
 from pgpy.packet import Packet
 from pgpy.types import Armorable
 
-# --- Bounds (input -> cost) -------------------------------------------------
-# A caller-controlled OpenPGP blob drives parse cost in direct proportion to
-# these dimensions. Bounded BEFORE the bytes are handed to the parser.
-#
-# The platform's deployed-invocation ingress accepts a request body up to
-# ~17 MiB (nginx raised to 64m; MaxRunPayloadBytes 16 MiB; node gRPC transport
-# 24 MiB) -- an earlier ingress misconfiguration silently capped this at
-# ~1 MiB and this package was correspondingly capped at 640 KiB to dodge it;
-# that platform bug is now fixed. `binary` input is raw bytes counted
-# directly; `armored` input is ASCII text carrying base64 (~1.33x inflation
-# over the raw bytes it encodes) plus a JSON request envelope on top.
-# MAX_INPUT_BYTES bounds the bytes handed to this module (raw for `binary`,
-# the armored text itself for `armored`) at 11 MiB, so the actual HTTP
-# request body -- base64/JSON framing included -- stays comfortably under
-# the ~16 MiB real ceiling. Large keyrings and signed/compressed messages
-# can legitimately be several MiB; this is no longer artificially tight.
-MAX_INPUT_BYTES = 11 * 1024 * 1024
-
-# A safety cap on the FLATTENED packet list a single ParsePackets/
-# DescribeMessageStructure call will return, independent of decompression.
-# Note this does NOT bound the transient memory a pathological compressed
-# packet can make PGPy allocate during decompression itself (PGPy's own
-# CompressionAlgorithm.decompress() has no output-size limit) -- that is a
-# known, logged limitation of the wrapped library, not something this glue
-# code can safely bound without a process-wide side effect that would risk
-# starving unrelated concurrent invocations. See the package README.
-MAX_PACKETS = 20_000
-
 
 class PgpParseError(Exception):
-    """Raised on malformed input or a bound being exceeded. Every node catches
-    this at its boundary and returns a structured (ok=False, error=...) result
-    rather than letting an exception escape."""
+    """Raised on malformed OpenPGP input. Every node catches this at its
+    boundary and returns a structured (ok=False, error=...) result rather
+    than letting an exception escape."""
 
 
 def _armor_block_type(magic, has_cleartext):
@@ -68,14 +40,11 @@ def _armor_block_type(magic, has_cleartext):
 
 def resolve_blob(blob):
     """Resolve a PgpBlob (binary xor armored) into (raw_bytes, was_armored,
-    block_type). Enforces MAX_INPUT_BYTES on the bytes actually handed in,
-    before any parsing/dearmoring happens."""
+    block_type)."""
     armored = getattr(blob, "armored", "") or ""
     binary = bytes(getattr(blob, "binary", b"") or b"")
 
     if armored:
-        if len(armored.encode("utf-8", "replace")) > MAX_INPUT_BYTES:
-            raise PgpParseError(f"armored input exceeds {MAX_INPUT_BYTES} byte bound")
         try:
             unarmored = Armorable.ascii_unarmor(armored)
         except (ValueError, PGPError) as e:
@@ -85,8 +54,6 @@ def resolve_blob(blob):
         return body, True, block_type
 
     if binary:
-        if len(binary) > MAX_INPUT_BYTES:
-            raise PgpParseError(f"binary input exceeds {MAX_INPUT_BYTES} byte bound")
         return binary, False, ""
 
     raise PgpParseError("PgpBlob is empty: provide exactly one of `binary` or `armored`")
@@ -258,39 +225,28 @@ def describe_packet(pkt):
 
 
 def walk_packets(data):
-    """Walk a raw OpenPGP packet-stream bytearray into a flat list of
-    (index, header, packet) tuples, transparently descending into any
-    CompressedData packet's already-decompressed nested packets (pgpy
-    decompresses eagerly on parse -- see CompressedData.parse). Bounded to
-    MAX_PACKETS total entries; truncated=True is returned if the bound hit."""
+    """Walk a raw OpenPGP packet-stream bytearray into a flat list of packet
+    objects, transparently descending into any CompressedData packet's
+    already-decompressed nested packets (pgpy decompresses eagerly on parse
+    -- see CompressedData.parse). Raises PgpParseError if the stream cannot
+    be parsed as a sequence of OpenPGP packets."""
     stream = bytearray(data)
     flat = []
-    truncated = False
 
     def _emit(pkt):
-        nonlocal truncated
-        if len(flat) >= MAX_PACKETS:
-            truncated = True
-            return
         flat.append(pkt)
         if type(pkt).__name__ == "CompressedData":
             for child in (getattr(pkt, "packets", None) or []):
-                if len(flat) >= MAX_PACKETS:
-                    truncated = True
-                    return
                 _emit(child)
 
     while len(stream) > 0:
-        if len(flat) >= MAX_PACKETS:
-            truncated = True
-            break
         try:
             pkt = Packet(stream)
         except Exception as e:
             raise PgpParseError(f"malformed packet stream: {e}") from e
         _emit(pkt)
 
-    return flat, truncated
+    return flat
 
 
 # --- Signature subpacket helpers (raw-packet level, used by ParsePackets'

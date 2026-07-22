@@ -60,7 +60,7 @@ def validate_structure(ax: AxiomContext, input: PgpBlob) -> ValidationResult:
         )
 
     try:
-        packets, truncated = walk_packets(raw)
+        packets = walk_packets(raw)
     except PgpParseError as e:
         return ValidationResult(ok=True, well_formed=False, object_kind="Unknown",
                                  structural_issues=[str(e)])
@@ -73,8 +73,6 @@ def validate_structure(ax: AxiomContext, input: PgpBlob) -> ValidationResult:
 
     object_kind = _classify(packets)
     issues = []
-    if truncated:
-        issues.append("packet count exceeded the parser's bound; result is a truncated prefix")
 
     self_check_applicable = False
     self_sigs_valid = False
@@ -123,7 +121,7 @@ def validate_structure(ax: AxiomContext, input: PgpBlob) -> ValidationResult:
 
     return ValidationResult(
         ok=True,
-        well_formed=not truncated,
+        well_formed=True,
         object_kind=object_kind,
         packet_count=len(packets),
         structural_issues=issues,

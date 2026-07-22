@@ -1,5 +1,4 @@
 from gen.messages_pb2 import PgpBlob
-from nodes._common import MAX_INPUT_BYTES
 from nodes.parse_packets import parse_packets
 from nodes._test_helpers import FakeContext, load_fixture
 
@@ -10,7 +9,6 @@ def test_parse_packets_pubkey_golden():
     assert result.ok is True
     assert result.was_armored is True
     assert result.armor_block_type == "PGP PUBLIC KEY BLOCK"
-    assert result.truncated is False
 
     tags = [p.tag_name for p in result.packets]
     assert tags == ["PublicKey", "UserID", "Signature", "PublicSubKey", "Signature"]
@@ -75,21 +73,16 @@ def test_parse_packets_empty_input_is_error():
     assert result.error != ""
 
 
-def test_parse_packets_oversized_input_is_error():
+def test_parse_packets_large_uniform_packet_stream_not_undercounted():
+    """A large stream of tiny all-zero "packets" (each a valid old-format
+    header: tag 0 / Invalid, 0-length body) must be walked in full -- the
+    node has no artificial packet-count ceiling, so the caller always gets
+    the true, complete decomposition rather than a silently truncated
+    prefix (this package previously capped the walk at 20,000 packets;
+    that cost/DoS bound was a platform concern, not a domain one, and has
+    been removed)."""
     ax = FakeContext()
-    result = parse_packets(ax, PgpBlob(binary=b"\x00" * (MAX_INPUT_BYTES + 1024)))
-    assert result.ok is False
-
-
-def test_parse_packets_truncation_is_surfaced_not_silent():
-    """A pathological stream of tiny all-zero "packets" (each a valid
-    2-byte old-format header: tag 0 / Invalid, 0-length body) exceeds the
-    20,000-packet bound well within the MAX_INPUT_BYTES input cap. The node
-    must say so via `truncated=true` rather than silently returning a
-    partial list that looks complete."""
-    ax = FakeContext()
-    # 300,000 bytes of zeros = 150,000 two-byte "packets" -- far over the bound.
     result = parse_packets(ax, PgpBlob(binary=b"\x00" * 300_000))
     assert result.ok is True
-    assert result.truncated is True
-    assert len(result.packets) == 20_000
+    assert len(result.packets) > 20_000
+    assert all(p.tag_name == "Invalid" for p in result.packets)

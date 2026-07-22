@@ -3,7 +3,7 @@ from pgpy.types import Armorable
 
 from gen.messages_pb2 import PgpBlob, DearmorResult
 from gen.axiom_context import AxiomContext
-from nodes._common import MAX_INPUT_BYTES, PgpParseError, _armor_block_type
+from nodes._common import _armor_block_type
 
 
 def dearmor(ax: AxiomContext, input: PgpBlob) -> DearmorResult:
@@ -17,9 +17,6 @@ def dearmor(ax: AxiomContext, input: PgpBlob) -> DearmorResult:
     armored = input.armored
     if not armored:
         return DearmorResult(ok=False, error="PgpBlob.armored must be set (Dearmor takes ASCII-armored text; already-binary input needs no dearmoring)")
-
-    if len(armored.encode("utf-8", "replace")) > MAX_INPUT_BYTES:
-        return DearmorResult(ok=False, error=f"armored input exceeds {MAX_INPUT_BYTES} byte bound")
 
     try:
         unarmored = Armorable.ascii_unarmor(armored)

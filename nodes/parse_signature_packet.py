@@ -27,7 +27,7 @@ def parse_signature_packet(ax: AxiomContext, input: PgpBlob) -> SignaturePacketR
     """
     try:
         raw, _was_armored, _block_type = resolve_blob(input)
-        packets, _truncated = walk_packets(raw)
+        packets = walk_packets(raw)
     except PgpParseError as e:
         return SignaturePacketResult(ok=False, error=str(e))
     except Exception as e:

@@ -4,7 +4,6 @@ from pgpy.types import Armorable
 
 from gen.messages_pb2 import EnarmorInput, ArmoredResult
 from gen.axiom_context import AxiomContext
-from nodes._common import MAX_INPUT_BYTES
 
 _VALID_BLOCK_TYPES = {
     "PUBLIC KEY BLOCK",
@@ -34,8 +33,6 @@ def enarmor(ax: AxiomContext, input: EnarmorInput) -> ArmoredResult:
     data = bytes(input.data or b"")
     if not data:
         return ArmoredResult(ok=False, error="EnarmorInput.data must not be empty")
-    if len(data) > MAX_INPUT_BYTES:
-        return ArmoredResult(ok=False, error=f"input exceeds {MAX_INPUT_BYTES} byte bound")
 
     block_type = _normalize_block_type(input.block_type)
     if block_type not in _VALID_BLOCK_TYPES:

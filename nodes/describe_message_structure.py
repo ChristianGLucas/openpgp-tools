@@ -23,13 +23,11 @@ def describe_message_structure(ax: AxiomContext, input: PgpBlob) -> MessageStruc
     when the message is NOT encrypted -- the literal data packet's
     format/filename/modification-time/declared length. NEVER decrypts
     anything and NEVER returns literal-data content or any session/secret
-    key material. Bounded to 20,000 packets; truncated=true (never a silent
-    undercount) when the stream had more -- the counts above then reflect
-    only what was seen before the bound.
+    key material.
     """
     try:
         raw, _was_armored, _block_type = resolve_blob(input)
-        packets, truncated = walk_packets(raw)
+        packets = walk_packets(raw)
     except PgpParseError as e:
         return MessageStructureResult(ok=False, error=str(e))
     except Exception as e:
@@ -37,9 +35,6 @@ def describe_message_structure(ax: AxiomContext, input: PgpBlob) -> MessageStruc
 
     if not packets:
         return MessageStructureResult(ok=False, error="no OpenPGP packets found in input")
-
-    if truncated:
-        ax.log.warn(f"DescribeMessageStructure: packet list truncated at bound for input of {len(raw)} bytes")
 
     pkesk_recipients = []
     skesk_count = 0
@@ -94,7 +89,6 @@ def describe_message_structure(ax: AxiomContext, input: PgpBlob) -> MessageStruc
         signature_count=signature_count,
         signature_hash_algorithms=signature_hash_algorithms,
         literal_data_present=literal_present,
-        truncated=truncated,
     )
     if literal_present:
         result.literal_data_format = getattr(literal, "format", "") or ""
