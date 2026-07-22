@@ -25,7 +25,9 @@ package christiangeorgelucas.openpgp_tools;
 // raw OpenPGP packet byte stream) or `armored` (ASCII-armor text, the
 // "-----BEGIN PGP ...-----" ... "-----END PGP ...-----" form produced by
 // `gpg --armor` or this package's Enarmor node). When both are set, `armored`
-// wins. Bounded to 640 KiB.
+// wins. Bounded to 11 MiB (see nodes/_common.py MAX_INPUT_BYTES) so the
+// base64/JSON-encoded request body stays comfortably under the platform's
+// ~16 MiB deployed-invocation ingress limit.
 message PgpBlob {
   bytes binary = 1;
   string armored = 2;

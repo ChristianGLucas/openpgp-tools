@@ -29,10 +29,19 @@ from pgpy.types import Armorable
 # A caller-controlled OpenPGP blob drives parse cost in direct proportion to
 # these dimensions. Bounded BEFORE the bytes are handed to the parser.
 #
-# The Axiom deployed invocation ingress caps request bodies at ~1 MiB; 640 KiB
-# keeps every node comfortably under that ceiling. OpenPGP keys/signatures/
-# messages are normally tiny (a handful of KiB at most), so this is generous.
-MAX_INPUT_BYTES = 640 * 1024
+# The platform's deployed-invocation ingress accepts a request body up to
+# ~17 MiB (nginx raised to 64m; MaxRunPayloadBytes 16 MiB; node gRPC transport
+# 24 MiB) -- an earlier ingress misconfiguration silently capped this at
+# ~1 MiB and this package was correspondingly capped at 640 KiB to dodge it;
+# that platform bug is now fixed. `binary` input is raw bytes counted
+# directly; `armored` input is ASCII text carrying base64 (~1.33x inflation
+# over the raw bytes it encodes) plus a JSON request envelope on top.
+# MAX_INPUT_BYTES bounds the bytes handed to this module (raw for `binary`,
+# the armored text itself for `armored`) at 11 MiB, so the actual HTTP
+# request body -- base64/JSON framing included -- stays comfortably under
+# the ~16 MiB real ceiling. Large keyrings and signed/compressed messages
+# can legitimately be several MiB; this is no longer artificially tight.
+MAX_INPUT_BYTES = 11 * 1024 * 1024
 
 # A safety cap on the FLATTENED packet list a single ParsePackets/
 # DescribeMessageStructure call will return, independent of decompression.

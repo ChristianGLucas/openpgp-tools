@@ -18,8 +18,10 @@ verification it performs (`ValidateStructure`'s self-signature check) is a pure 
 structural check, exactly like checking a self-signed X.509 certificate's own signature — never a
 trust decision.
 
-Every node takes input as raw binary or ASCII-armored text (`PgpBlob`), bounded to 640 KiB, and
-returns a structured error rather than crashing on malformed input.
+Every node takes input as raw binary or ASCII-armored text (`PgpBlob`), bounded to 11 MiB
+(comfortably under the platform's ~16 MiB deployed-invocation ingress limit once base64/JSON
+framing overhead is accounted for), and returns a structured error rather than crashing on
+malformed input.
 
 ## Nodes
 

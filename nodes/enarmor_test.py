@@ -1,4 +1,5 @@
 from gen.messages_pb2 import PgpBlob, EnarmorInput, ArmorHeader
+from nodes._common import MAX_INPUT_BYTES
 from nodes.dearmor import dearmor
 from nodes.enarmor import enarmor
 from nodes._test_helpers import FakeContext, crc24_independent, load_fixture
@@ -68,5 +69,5 @@ def test_enarmor_invalid_block_type_is_error():
 
 def test_enarmor_oversized_input_is_error():
     ax = FakeContext()
-    result = enarmor(ax, EnarmorInput(data=b"\x00" * (700 * 1024), block_type="MESSAGE"))
+    result = enarmor(ax, EnarmorInput(data=b"\x00" * (MAX_INPUT_BYTES + 1024), block_type="MESSAGE"))
     assert result.ok is False

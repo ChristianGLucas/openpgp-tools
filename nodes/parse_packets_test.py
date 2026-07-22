@@ -1,4 +1,5 @@
 from gen.messages_pb2 import PgpBlob
+from nodes._common import MAX_INPUT_BYTES
 from nodes.parse_packets import parse_packets
 from nodes._test_helpers import FakeContext, load_fixture
 
@@ -76,16 +77,16 @@ def test_parse_packets_empty_input_is_error():
 
 def test_parse_packets_oversized_input_is_error():
     ax = FakeContext()
-    result = parse_packets(ax, PgpBlob(binary=b"\x00" * (700 * 1024)))
+    result = parse_packets(ax, PgpBlob(binary=b"\x00" * (MAX_INPUT_BYTES + 1024)))
     assert result.ok is False
 
 
 def test_parse_packets_truncation_is_surfaced_not_silent():
     """A pathological stream of tiny all-zero "packets" (each a valid
     2-byte old-format header: tag 0 / Invalid, 0-length body) exceeds the
-    20,000-packet bound well within the 640 KiB input cap. The node must
-    say so via `truncated=true` rather than silently returning a partial
-    list that looks complete."""
+    20,000-packet bound well within the MAX_INPUT_BYTES input cap. The node
+    must say so via `truncated=true` rather than silently returning a
+    partial list that looks complete."""
     ax = FakeContext()
     # 300,000 bytes of zeros = 150,000 two-byte "packets" -- far over the bound.
     result = parse_packets(ax, PgpBlob(binary=b"\x00" * 300_000))
