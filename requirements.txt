@@ -1,0 +1,9 @@
+# PGPy (BSD-3-Clause) — OpenPGP (RFC 4880/9580) key/message/signature parsing.
+# Full transitive tree verified permissive (Apache-2.0/BSD/MIT-0), no copyleft:
+#   cryptography (Apache-2.0 OR BSD-3-Clause), cffi (MIT-0), pyasn1 (BSD-2-Clause),
+#   pycparser (BSD-3-Clause).
+PGPy==0.6.0
+cryptography==49.0.0
+cffi==2.1.0
+pyasn1==0.6.4
+pycparser==3.0

@@ -1,0 +1,211 @@
+// This file defines the data contracts (messages) for your Axiom package.
+// Every node's --input and --output refers to a message defined here.
+//
+// Run `axiom create message <Name>` to scaffold a new message below.
+// Run `axiom generate` to compile these definitions into language bindings in gen/.
+//
+// DOCUMENTATION
+//   Comments written directly above a message or field declaration are extracted
+//   automatically at publish time and shown in the Axiom registry as documentation.
+//   Write your descriptions there — no separate doc files needed.
+//
+//   Leading comment  (no blank line before the declaration) → registry description ✓
+//   Detached comment (blank line before the declaration)    → ignored by registry  ✗
+//
+// This file is yours to edit. Axiom only appends new message blocks — it never
+// overwrites or removes content you have written.
+
+syntax = "proto3";
+
+package christiangeorgelucas.openpgp_tools;
+
+// A caller-supplied OpenPGP object (RFC 4880 / RFC 9580): a transferable public
+// or secret key, a detached/standalone signature, or a message (encrypted and/or
+// signed and/or compressed literal data). Provide EXACTLY ONE of `binary` (the
+// raw OpenPGP packet byte stream) or `armored` (ASCII-armor text, the
+// "-----BEGIN PGP ...-----" ... "-----END PGP ...-----" form produced by
+// `gpg --armor` or this package's Enarmor node). When both are set, `armored`
+// wins. Bounded to 640 KiB.
+message PgpBlob {
+  bytes binary = 1;
+  string armored = 2;
+}
+
+// One packet decoded from an OpenPGP packet stream, per RFC 4880 §4 / RFC 9580 §5.
+message PacketSummary {
+  int32 index = 1;              // 0-based position in the packet stream
+  string tag_name = 2;          // "PublicKey","PublicSubkey","SecretKey","SecretSubkey","UserID",
+                                 // "UserAttribute","Signature","OnePassSignature",
+                                 // "PublicKeyEncryptedSessionKey","SymKeyEncryptedSessionKey",
+                                 // "SymEncryptedIntegrityProtectedData","SymEncryptedData",
+                                 // "CompressedData","LiteralData","Marker",
+                                 // "ModificationDetectionCode","Trust","Unknown"
+  int32 tag_number = 3;         // the RFC packet tag number (0-63)
+  bool new_format = 4;          // new-format vs old-format packet header (RFC 4880 §4.2)
+  int32 body_length_bytes = 5;  // length of the packet body, as declared by its header
+  // Brief, type-specific, human-readable detail (algorithm names, key/issuer IDs,
+  // signature type, literal-data filename, compression algorithm, etc).
+  // NEVER includes literal-data content, session keys, or any secret material.
+  string detail = 6;
+}
+
+// The full packet-level structural decomposition of an OpenPGP blob.
+message PacketListResult {
+  bool ok = 1;
+  string error = 2;
+  bool was_armored = 3;         // true if the input was ASCII-armored and was dearmored first
+  string armor_block_type = 4;  // the armor's block type when was_armored=true, else empty
+  repeated PacketSummary packets = 5;
+}
+
+// One User ID (RFC 4880 §5.11) bound to a key, decomposed from its "Name (Comment) <email>" form.
+message UserIdEntry {
+  string uid = 1;       // the full, unparsed User ID string
+  string name = 2;
+  string comment = 3;
+  string email = 4;
+  bool primary = 5;     // set from a self-signature's PrimaryUserID subpacket, when determinable
+  bool revoked = 6;     // a revocation signature was found for this User ID
+}
+
+// One subkey bound to a primary key, with its own algorithm/validity/flags.
+message SubkeyEntry {
+  string fingerprint = 1;       // hex, uppercase
+  string key_id = 2;            // hex, uppercase (fingerprint's low 64 bits)
+  string key_algorithm = 3;     // "RSA","DSA","ElGamal","ECDSA","EdDSA","ECDH","Ed25519","X25519",... or the raw algorithm ID when unrecognized
+  int32 key_size_bits = 4;      // RSA/DSA/ElGamal modulus bits; 0 for EC/EdDSA/X25519 (see curve)
+  string curve = 5;             // named curve for EC/EdDSA/X25519 keys; empty otherwise
+  string created = 6;           // RFC 3339 UTC
+  bool has_expiration = 7;
+  string expires_at = 8;        // RFC 3339 UTC; empty when has_expiration=false
+  repeated string key_flags = 9; // from the binding signature's KeyFlags subpacket:
+                                  // "certify","sign","encrypt_comms","encrypt_storage","authenticate","split_key","group_key"
+  bool revoked = 10;
+  bool binding_signature_present = 11; // false is a structural red flag (RFC 4880 §5.5.1.2 requires one)
+}
+
+// Structured metadata of an OpenPGP public or secret key — never any secret
+// key MATERIAL itself, only its public-facing metadata (fingerprint, algorithm,
+// validity, identities). Works on a lone key packet or a full Transferable
+// Public/Secret Key (RFC 4880 §11.1/§11.2: primary key + User IDs + subkeys).
+message KeyMetadataResult {
+  bool ok = 1;
+  string error = 2;
+  bool is_secret = 3;              // the blob carries secret key packet(s) — metadata only, no secret bytes are ever returned
+  string fingerprint = 4;          // primary key fingerprint, hex uppercase
+  string key_id = 5;               // primary key ID, hex uppercase
+  string key_algorithm = 6;
+  int32 key_size_bits = 7;
+  string curve = 8;
+  string created = 9;              // RFC 3339 UTC
+  bool has_expiration = 10;
+  string expires_at = 11;          // RFC 3339 UTC; empty when has_expiration=false
+  repeated string key_flags = 12;  // primary key's own KeyFlags, from its direct-key or self-certification signature
+  repeated UserIdEntry user_ids = 13;
+  repeated SubkeyEntry subkeys = 14;
+}
+
+// A standalone/detached signature, or the first Signature packet found in a
+// larger blob (e.g. a key's self-certification, or a message's signature layer).
+message SignaturePacketResult {
+  bool ok = 1;
+  string error = 2;
+  bool found = 3;                     // false (not an error) when the blob contains no Signature packet
+  int32 version = 4;                  // 3, 4, 5, or 6
+  string signature_type = 5;          // "BinaryDocument","CanonicalTextDocument","GenericCertification",
+                                       // "PersonaCertification","CasualCertification","PositiveCertification",
+                                       // "SubkeyBinding","PrimaryKeyBinding","DirectKey","KeyRevocation",
+                                       // "SubkeyRevocation","CertificationRevocation","Timestamp",
+                                       // "ThirdPartyConfirmation","Unknown"
+  string public_key_algorithm = 6;
+  string hash_algorithm = 7;
+  string created = 8;                 // RFC 3339 UTC
+  bool has_expiration = 9;
+  string expires_at = 10;             // RFC 3339 UTC; empty when has_expiration=false
+  string issuer_key_id = 11;          // hex, from the Issuer subpacket; empty if absent
+  string issuer_fingerprint = 12;     // hex, from the IssuerFingerprint subpacket (v4+); empty if absent
+  repeated string hashed_subpacket_types = 13;   // subpacket type names present in the hashed area
+  repeated string unhashed_subpacket_types = 14; // subpacket type names present in the unhashed area
+  bool is_exportable = 15;            // Exportable Certification subpacket; defaults true when absent
+  bool is_primary_user_id = 16;       // PrimaryUserID subpacket, when present
+  repeated string key_flags = 17;     // KeyFlags subpacket, when present
+}
+
+// A single ASCII-armor header line (RFC 4880 §6.2), e.g. "Version" / "Comment".
+message ArmorHeader {
+  string key = 1;
+  string value = 2;
+}
+
+// Result of dearmoring (decoding) ASCII-armored OpenPGP text into raw binary.
+message DearmorResult {
+  bool ok = 1;
+  string error = 2;
+  string block_type = 3;         // e.g. "PGP PUBLIC KEY BLOCK", "PGP MESSAGE", "PGP SIGNATURE", "PGP PRIVATE KEY BLOCK"
+  bytes data = 4;                // the decoded binary packet stream
+  map<string, string> headers = 5; // armor header lines (Version, Comment, ...)
+  string crc24_hex = 6;           // the 3-byte CRC24 checksum read from the armor, as 6 hex chars
+  bool crc24_valid = 7;           // whether the CRC24 recomputed over `data` matches crc24_hex
+}
+
+// Input for encoding raw OpenPGP binary data into ASCII armor (RFC 4880 §6.2 / §6.6).
+message EnarmorInput {
+  bytes data = 1;
+  // The armor block type without the "PGP " prefix or dashes, e.g. "PUBLIC KEY BLOCK",
+  // "PRIVATE KEY BLOCK", "MESSAGE", "SIGNATURE". Case-insensitive; normalized to upper case.
+  string block_type = 2;
+  repeated ArmorHeader headers = 3; // optional extra header lines (e.g. Comment); a Version header is added automatically
+}
+
+// Result of ASCII-armoring raw OpenPGP binary data.
+message ArmoredResult {
+  bool ok = 1;
+  string error = 2;
+  string armored = 3;   // the full "-----BEGIN PGP ...-----" ... "-----END PGP ...-----" text, CRLF-free
+  string crc24_hex = 4; // the computed CRC24 checksum, as 6 hex chars
+}
+
+// A structural validity report for an OpenPGP blob of any kind (key, signature,
+// or message). This is a PURE STRUCTURAL check — for a key blob, self-signature
+// verification uses only the key's OWN public material (a public-key operation,
+// exactly like checking a self-signed X.509 certificate) — it is never trust
+// validation and never touches secret key material.
+message ValidationResult {
+  bool ok = 1;                 // false only on a hard parse failure (no packets could be read at all)
+  string error = 2;
+  bool well_formed = 3;        // the packet sequence parsed cleanly end-to-end with no leftover/garbage bytes
+  string object_kind = 4;      // "TransferablePublicKey","TransferableSecretKey","Message","DetachedSignature","Unknown"
+  int32 packet_count = 5;
+  repeated string structural_issues = 6; // human-readable deviations from expected structure; empty when clean
+  bool self_signature_check_applicable = 7; // true only when object_kind is a key
+  bool self_signatures_valid = 8;           // meaningful only when self_signature_check_applicable=true
+}
+
+// One recipient of a Public-Key Encrypted Session Key packet (RFC 4880 §5.1).
+message PkeskRecipient {
+  string key_id = 1;   // hex; all-zeros denotes a "wildcard"/hidden recipient (RFC 4880 §5.1)
+  string public_key_algorithm = 2;
+  int32 version = 3;
+}
+
+// A semantic, message-level summary of an OpenPGP MESSAGE object's packet
+// structure (encryption/signature/compression envelope) — never the decrypted
+// plaintext or any session/secret key material.
+message MessageStructureResult {
+  bool ok = 1;
+  string error = 2;
+  bool is_encrypted = 3;          // any PKESK or SKESK + an encrypted-data packet is present
+  bool is_signed = 4;             // any (One-Pass-)Signature packet is present
+  bool is_compressed = 5;
+  string compression_algorithm = 6;   // "Uncompressed","ZIP","ZLIB","BZip2"; empty when is_compressed=false
+  repeated PkeskRecipient pkesk_recipients = 7;
+  int32 skesk_count = 8;           // count of password-based (symmetric-key) session-key packets
+  bool integrity_protected = 9;    // a SEIPD packet is present, vs a legacy unprotected SED packet
+  int32 signature_count = 10;
+  repeated string signature_hash_algorithms = 11;
+  bool literal_data_present = 12;      // only ever true when the message is NOT encrypted
+  string literal_data_format = 13;     // "b"(binary), "t"(text), "u"(utf8); empty if not present
+  string literal_data_filename = 14;
+  string literal_data_modified = 15;   // RFC 3339 UTC; empty if unset
+  int64 literal_data_length_bytes = 16; // the literal packet's declared body length — never the content itself
+}

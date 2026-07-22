@@ -1,0 +1,33 @@
+name: christiangeorgelucas/openpgp-tools
+version: 0.1.0
+language: python
+description: Deterministic, offline structural parsing of OpenPGP objects (RFC 4880 / RFC 9580) — public/secret keys, detached signatures, and messages — wrapping PGPy (BSD-3-Clause; its full runtime dependency tree — cryptography, cffi, pyasn1, pycparser — is Apache-2.0/BSD/MIT-0, no copyleft) plus this package's own low-level packet-stream walker built on PGPy's packet classes. Every node inspects only the packet structure and public metadata the caller supplies as binary or ASCII-armored bytes — never a network fetch, never a keyserver lookup. This package explicitly does NOT decrypt messages, does NOT sign anything, and NEVER reads or returns secret key material — key parsing extracts public-facing metadata only (fingerprint, algorithm, validity, User IDs, subkeys), even from a Transferable Secret Key. The one "verify" operation offered (ValidateStructure's self-signature check) is a PURE public-key structural check — exactly like checking a self-signed X.509 certificate — never a trust decision and never touching secret material. Malformed or truncated input returns a structured error, never a crash; every node is bounded to 640 KiB of input.
+nodes:
+    - name: ParsePackets
+      input: PgpBlob
+      output: PacketListResult
+      description: Walk an OpenPGP blob (ASCII-armored or binary) packet-by-packet and return its full structural decomposition — for each packet, its position, RFC packet tag (PublicKey, Signature, UserID, LiteralData, PublicKeyEncryptedSessionKey, SymEncryptedIntegrityProtectedData, CompressedData, etc.), header format, declared body length, and a brief type-specific detail string (algorithm, key/issuer ID, signature type, literal-data filename — never literal-data content or any secret material). Works on ANY OpenPGP object — a key, a detached signature, or a message — making it the general-purpose "what packets are actually in this blob" node. Malformed input returns a structured error rather than crashing.
+    - name: ExtractKeyMetadata
+      input: PgpBlob
+      output: KeyMetadataResult
+      description: Parse an OpenPGP public or secret key (a lone key packet or a full Transferable Public/Secret Key with User IDs and subkeys) into structured public metadata — primary key fingerprint, key ID, algorithm, size/curve, creation time, expiration, key flags, every User ID (name/comment/email, primary and revoked flags), and every subkey (its own fingerprint, algorithm, validity, key flags, and whether a binding signature is present). is_secret reports whether the blob carries secret key packets, but NO secret key material is ever read or returned — only public metadata, even for a secret key. Malformed input returns a structured error rather than crashing.
+    - name: ParseSignaturePacket
+      input: PgpBlob
+      output: SignaturePacketResult
+      description: Parse the first Signature packet found in an OpenPGP blob — a standalone/detached .sig file, or the leading signature inside a larger key or message — into its structured fields — signature type (binary document, key certification, subkey binding, key revocation, etc.), public-key and hash algorithm, creation/expiration time, issuer key ID and fingerprint, which subpacket types are present in the hashed vs unhashed area, and (when present) the KeyFlags and PrimaryUserID subpackets. found=false (not an error) when the blob has no Signature packet. This is metadata extraction only — it does NOT cryptographically verify the signature.
+    - name: Dearmor
+      input: PgpBlob
+      output: DearmorResult
+      description: Decode ASCII-armored OpenPGP text (a "-----BEGIN PGP ...-----" block, as produced by `gpg --armor`) into its raw binary packet stream, per RFC 4880 §6.2/§6.3. Returns the block type (e.g. "PGP PUBLIC KEY BLOCK", "PGP MESSAGE"), every armor header line (Version, Comment, ...), the decoded binary as bytes, and the armor's embedded CRC24 checksum both as read (crc24_hex) and validated by recomputing it over the decoded data (crc24_valid) — a mismatch means the armor text was corrupted or truncated. Malformed armor (bad base64, missing dashes, checksum that fails to parse) returns a structured error rather than crashing.
+    - name: Enarmor
+      input: EnarmorInput
+      output: ArmoredResult
+      description: Encode raw OpenPGP binary packet data into ASCII armor, per RFC 4880 §6.2/§6.3 — wraps the base64 body in the "-----BEGIN PGP <block_type>-----" / "-----END PGP <block_type>-----" delimiters, computes and appends the CRC24 checksum line, and includes any caller-supplied header lines (e.g. Comment) alongside an automatically-added Version header. Round-trips byte-for-byte with Dearmor. block_type is one of PUBLIC KEY BLOCK, PRIVATE KEY BLOCK, MESSAGE, or SIGNATURE (case-insensitive).
+    - name: ValidateStructure
+      input: PgpBlob
+      output: ValidationResult
+      description: Validate that an OpenPGP blob's packet sequence is well-formed per RFC 4880/9580 — parses end-to-end with no leftover or garbage bytes, classifies the object kind (TransferablePublicKey, TransferableSecretKey, Message, DetachedSignature), and reports any structural deviations (e.g. a subkey with no binding signature). For a key blob, also reports whether its self-certification signatures verify against the key's OWN public material — a PURE structural/public-key check, exactly like checking a self-signed X.509 certificate (see christiangeorgelucas/certificate-tools' DetectSelfSigned) — never a trust decision, and it never touches secret key material even when the blob is a secret key. self_signatures_valid is only meaningful when self_signature_check_applicable=true.
+    - name: DescribeMessageStructure
+      input: PgpBlob
+      output: MessageStructureResult
+      description: Parse an OpenPGP MESSAGE object (encrypted and/or signed and/or compressed literal data) into a semantic structural summary — whether it is encrypted (with each PKESK recipient's key ID and algorithm, plus a count of password-based SKESK packets), whether its encrypted-data packet is integrity-protected (modern SEIPD) or legacy unprotected SED, whether and how it is compressed, whether and how many times it is signed (with each signature's hash algorithm), and — only when the message is NOT encrypted — the literal data packet's format/filename/modification-time/declared length. NEVER decrypts anything and NEVER returns literal-data content or any session/secret key material — structure only.
