@@ -58,3 +58,19 @@ def test_describe_message_structure_empty_input_is_error():
     ax = FakeContext()
     result = describe_message_structure(ax, PgpBlob())
     assert result.ok is False
+
+
+def test_describe_message_structure_truncation_is_surfaced_not_silent():
+    """Mirrors the same truncation-visibility contract as ParsePackets: a
+    pathological packet-count blast must not silently undercount
+    signature_count/pkesk_recipients/skesk_count."""
+    ax = FakeContext()
+    result = describe_message_structure(ax, PgpBlob(binary=b"\x00" * 300_000))
+    assert result.ok is True
+    assert result.truncated is True
+
+
+def test_describe_message_structure_normal_input_not_truncated():
+    ax = FakeContext()
+    result = describe_message_structure(ax, PgpBlob(armored=load_fixture("signed_message.asc")))
+    assert result.truncated is False

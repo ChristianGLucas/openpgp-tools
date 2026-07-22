@@ -23,7 +23,9 @@ def describe_message_structure(ax: AxiomContext, input: PgpBlob) -> MessageStruc
     when the message is NOT encrypted -- the literal data packet's
     format/filename/modification-time/declared length. NEVER decrypts
     anything and NEVER returns literal-data content or any session/secret
-    key material.
+    key material. Bounded to 20,000 packets; truncated=true (never a silent
+    undercount) when the stream had more -- the counts above then reflect
+    only what was seen before the bound.
     """
     try:
         raw, _was_armored, _block_type = resolve_blob(input)
@@ -92,6 +94,7 @@ def describe_message_structure(ax: AxiomContext, input: PgpBlob) -> MessageStruc
         signature_count=signature_count,
         signature_hash_algorithms=signature_hash_algorithms,
         literal_data_present=literal_present,
+        truncated=truncated,
     )
     if literal_present:
         result.literal_data_format = getattr(literal, "format", "") or ""

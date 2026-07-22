@@ -18,7 +18,9 @@ def parse_packets(ax: AxiomContext, input: PgpBlob) -> PacketListResult:
     a message. Transparently descends into compressed-data packets (pgpy
     decompresses them on parse) so a compressed signed message still shows
     its One-Pass-Signature/Literal-Data/Signature layers. Malformed input
-    returns a structured error rather than crashing.
+    returns a structured error rather than crashing. Bounded to 20,000
+    packets; truncated=true (never a silent undercount) when the stream had
+    more.
     """
     try:
         raw, was_armored, block_type = resolve_blob(input)
@@ -48,6 +50,7 @@ def parse_packets(ax: AxiomContext, input: PgpBlob) -> PacketListResult:
         was_armored=was_armored,
         armor_block_type=block_type,
         packets=summaries,
+        truncated=truncated,
     )
     if truncated:
         ax.log.warn(f"ParsePackets: packet list truncated at bound for input of {len(raw)} bytes")

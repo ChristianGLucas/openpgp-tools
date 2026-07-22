@@ -9,6 +9,7 @@ def test_parse_packets_pubkey_golden():
     assert result.ok is True
     assert result.was_armored is True
     assert result.armor_block_type == "PGP PUBLIC KEY BLOCK"
+    assert result.truncated is False
 
     tags = [p.tag_name for p in result.packets]
     assert tags == ["PublicKey", "UserID", "Signature", "PublicSubKey", "Signature"]
@@ -77,3 +78,17 @@ def test_parse_packets_oversized_input_is_error():
     ax = FakeContext()
     result = parse_packets(ax, PgpBlob(binary=b"\x00" * (700 * 1024)))
     assert result.ok is False
+
+
+def test_parse_packets_truncation_is_surfaced_not_silent():
+    """A pathological stream of tiny all-zero "packets" (each a valid
+    2-byte old-format header: tag 0 / Invalid, 0-length body) exceeds the
+    20,000-packet bound well within the 640 KiB input cap. The node must
+    say so via `truncated=true` rather than silently returning a partial
+    list that looks complete."""
+    ax = FakeContext()
+    # 300,000 bytes of zeros = 150,000 two-byte "packets" -- far over the bound.
+    result = parse_packets(ax, PgpBlob(binary=b"\x00" * 300_000))
+    assert result.ok is True
+    assert result.truncated is True
+    assert len(result.packets) == 20_000
