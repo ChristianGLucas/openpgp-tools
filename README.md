@@ -1,6 +1,6 @@
 # openpgp-tools
 
-An [Axiom](https://axiom.dev) node package for deterministic, offline structural parsing of
+An [Axiom](https://axiomide.com) node package for deterministic, offline structural parsing of
 OpenPGP objects (RFC 4880 / RFC 9580) — public/secret keys, detached signatures, and messages.
 Built for the Axiom marketplace.
 
